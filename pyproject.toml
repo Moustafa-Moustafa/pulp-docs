@@ -1,34 +1,50 @@
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling~=1.14"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pulp-docs"
 version = "0.0.1"
-requires-python = ">= 3.11"
+requires-python = ">= 3.12"
 dependencies = [
-    "mkdocs-material",
-    "mkdocstrings",
-    "mkdocstrings-python>=1.14.1,<1.15",
-    "mkdocs-macros-plugin",
-    "mkdocs-site-urls",
-    "mkdocs-literate-nav",
-    "bs4",
+    "mkdocs~=1.6.1",
+    "mkdocs-material~=9.6.7",
+    "mkdocstrings~=0.29.0",
+    "mkdocstrings-python~=1.14.1",
+    "mkdocs-macros-plugin~=1.3.7",
+    "mkdocs-site-urls~=0.2.0",
+    "mkdocs-literate-nav~=0.6.1",
     "httpx",
     "rich",
+    "GitPython~=3.1.44",
 ]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+descriptions = "Pulp Docs is a documentation aggregation tool for the Pulp Project."
+readme = "README.md"
 
 [project.scripts]
 pulp-docs = "pulp_docs.cli:main"
 
-[tool.setuptools]
-include-package-data=true
+[project.entry-points."mkdocs.plugins"]
+PulpDocs = "pulp_docs.plugin:PulpDocsPlugin"
 
-[tool.setuptools.package-data]
-pulp_docs = ["data/**"]
+###########
+## BUILD ##
+###########
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pulp_docs"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# enable using the installed package directly for development
+"mkdocs.yml" = "pulp_docs/mkdocs.yml"
+"pulpproject.org" = "pulp_docs/pulpproject.org"
+"custom" = "pulp_docs/custom"
+
+#############
+## TESTING ##
+#############
 
 [tool.pytest.ini_options]
 pythonpath = "src"
@@ -36,3 +52,28 @@ addopts = [
     "--import-mode=importlib",
 ]
 
+##########
+## LINT ##
+##########
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+exclude = [
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

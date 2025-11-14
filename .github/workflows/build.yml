@@ -1,3 +1,4 @@
+---
 name: "Build"
 
 on:
@@ -8,16 +9,24 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
+
       - name: "Set up Python"
         uses: "actions/setup-python@v5"
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+
       - name: "Install python dependencies"
         run: |
-          pip install build setuptools wheel
+          pip install build
+
       - name: "Build wheels"
         run: |
-          make build
+          make dist-build
+
+      - name: "Test distribution"
+        run: |
+          make dist-test
+
       - name: "Upload wheels"
         uses: "actions/upload-artifact@v4"
         with:
@@ -25,3 +34,4 @@ jobs:
           path: |
             dist/
           if-no-files-found: "error"
+...

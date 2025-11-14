@@ -8,56 +8,40 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import Optional
 
-from importlib.resources import files
+from mkdocs.config import load_config
 
-from pulp_docs.constants import BASE_TMPDIR_NAME
-from pulp_docs.repository import Repos
+from pulp_docs.cli import get_default_mkdocs
+from pulp_docs.plugin import ComponentOption
+
+BASE_TMPDIR_NAME = "pulpdocs_tmp"
+CURRENT_DIR = Path(__file__).parent.absolute()
 
 
-def main(
-    output_dir: Path, plugins_filter: Optional[list[str]] = None, dry_run: bool = False
-):
+def main(output_dir: Path, plugins_filter: Optional[list[str]] = None, dry_run: bool = False):
     """Creates openapi json files for all or selected plugins in output dir."""
-    repolist = str(files("pulp_docs").joinpath("data/repolist.yml"))
-    repos = Repos.from_yaml(repolist).get_repos(["content"])
-    if plugins_filter:
-        repos = [p for p in repos if p.name in plugins_filter]
 
-    pulp_plugins = []
-    for repo in repos:
-        name = repo.name
-        label = name.split("_")[-1]
-        is_subpackage = bool(getattr(repo, "subpackage_of", False))
-        pulp_plugins.append(PulpPlugin(name, label, is_subpackage))
+    def filter_plugin(name: str) -> bool:
+        if not plugins_filter:
+            return True
+        return name in plugins_filter or name == "pulpcore"
 
-    openapi = OpenAPIGenerator(plugins=pulp_plugins, dry_run=dry_run)
+    def get_plugins() -> list[ComponentOption]:
+        mkdocs_yml = str(get_default_mkdocs())
+        pulpdocs_plugin = load_config(mkdocs_yml).plugins["PulpDocs"]
+        all_components = pulpdocs_plugin.config.components
+        return [c for c in all_components if c.rest_api]
+
+    all_plugins = get_plugins()
+    all_plugins = [p for p in all_plugins if filter_plugin(p.name)]
+    openapi = OpenAPIGenerator(plugins=all_plugins, dry_run=dry_run)
     openapi.generate(target_dir=output_dir)
-
-
-class PulpPlugin(NamedTuple):
-    """
-    A Pulp plugin.
-
-    Args:
-        name: The repository name for plugin as it exists in github.com
-        label: The label of the plugin as its used in django (e.g, pulpcore.label == core)
-        is_subpackage: If the plugin is a subpackage (e.g, pulp_file)
-    """
-
-    name: str
-    label: str
-    is_subpackage: bool
-    remote_template: str = "https://github.com/pulp/{name}"
-
-    def get_remote_url(self):
-        return self.remote_template.format(name=self.name)
 
 
 class OpenAPIGenerator:
     """
-    Responsible for seting up a python environment with the required
+    Responsible for setting up a python environment with the required
     Pulp packages to generate openapi schemas for all registered plugins.
 
     Args:
@@ -65,8 +49,8 @@ class OpenAPIGenerator:
         dry_run: Whether it should execute the commands or just show them.
     """
 
-    def __init__(self, plugins: list[PulpPlugin], dry_run=False):
-        self.pulpcore = PulpPlugin("pulpcore", "core", False)
+    def __init__(self, plugins: list[ComponentOption], dry_run=False):
+        self.pulpcore = next(filter(lambda p: p.name == "pulpcore", plugins))
         self.plugins = plugins + [self.pulpcore]
         self.dry_run = dry_run
 
@@ -91,17 +75,13 @@ class OpenAPIGenerator:
                 outfile,
             )
 
-    def setup_venv(self, plugin: PulpPlugin):
+    def setup_venv(self, plugin: ComponentOption):
         """
         Creates virtualenv with plugin.
         """
         create_venv_cmd = ("python", "-m", "venv", self.venv_path)
-        url = (
-            plugin.get_remote_url()
-            if not plugin.is_subpackage
-            else self.pulpcore.get_remote_url()
-        )
-        install_cmd = ["pip", "install", f"git+{url}"]
+        # setuptools provides distutils for python >=3.12.
+        install_cmd = ["pip", "install", f"git+{plugin.git_url}", "setuptools"]
 
         if self.dry_run is True:
             print(" ".join(create_venv_cmd))
@@ -114,7 +94,7 @@ class OpenAPIGenerator:
     def run_python(self, *cmd: str) -> str:
         """Run a binary command from within the tmp venv.
 
-        Basicaly: $tmp-venv/bin/{first-arg} {remaining-args}
+        Basically: $tmp-venv/bin/{first-arg} {remaining-args}
         """
         cmd_bin = os.path.join(self.venv_path, f"bin/{cmd[0]}")
         final_cmd = [cmd_bin] + list(cmd[1:])
@@ -145,7 +125,7 @@ def parse_args():
         "-l",
         "--plugin-list",
         type=str,
-        help="List of plugins that should be used. Use all if ommited.",
+        help="List of plugins that should be used. Use all if omitted.",
     )
     args = parser.parse_args()
 
